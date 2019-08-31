@@ -27,7 +27,9 @@ pub const PreloadedInfo = struct {
     }
 };
 
-pub fn Loader(comptime ReadError: type) type {
+// verbose is comptime so we can avoid using std.debug.warn which doesn't
+// exist on some targets (e.g. wasm)
+pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
     return struct {
         fn readIdentifier(stream: *std.io.InStream(ReadError)) ![4]u8 {
             var quad: [4]u8 = undefined;
@@ -35,37 +37,37 @@ pub fn Loader(comptime ReadError: type) type {
             return quad;
         }
 
-        fn preloadError(verbose: bool, comptime message: []const u8) !PreloadedInfo {
+        fn preloadError(comptime message: []const u8) !PreloadedInfo {
             if (verbose) {
-                std.debug.warn(message);
+                std.debug.warn("{}\n", message);
             }
             return error.WavLoadFailed;
         }
 
-        pub fn preload(stream: *std.io.InStream(ReadError), verbose: bool) !PreloadedInfo {
+        pub fn preload(stream: *std.io.InStream(ReadError)) !PreloadedInfo {
             // read RIFF chunk descriptor (12 bytes)
             const chunk_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, chunk_id, "RIFF")) {
-                return preloadError(verbose, "missing \"RIFF\" header\n");
+                return preloadError("missing \"RIFF\" header");
             }
             try stream.skipBytes(4); // ignore chunk_size
             const format_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, format_id, "WAVE")) {
-                return preloadError(verbose, "missing \"WAVE\" identifier\n");
+                return preloadError("missing \"WAVE\" identifier");
             }
 
             // read "fmt" sub-chunk
             const subchunk1_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, subchunk1_id, "fmt ")) {
-                return preloadError(verbose, "missing \"fmt \" header\n");
+                return preloadError("missing \"fmt \" header");
             }
             const subchunk1_size = try stream.readIntLittle(u32);
             if (subchunk1_size != 16) {
-                return preloadError(verbose, "not PCM (subchunk1_size != 16)\n");
+                return preloadError("not PCM (subchunk1_size != 16)");
             }
             const audio_format = try stream.readIntLittle(u16);
             if (audio_format != 1) {
-                return preloadError(verbose, "not integer PCM (audio_format != 1)\n");
+                return preloadError("not integer PCM (audio_format != 1)");
             }
             const num_channels = try stream.readIntLittle(u16);
             const sample_rate = try stream.readIntLittle(u32);
@@ -74,34 +76,34 @@ pub fn Loader(comptime ReadError: type) type {
             const bits_per_sample = try stream.readIntLittle(u16);
 
             if (num_channels < 1 or num_channels > 16) {
-                return preloadError(verbose, "invalid number of channels\n");
+                return preloadError("invalid number of channels");
             }
             if (sample_rate < 1 or sample_rate > 192000) {
-                return preloadError(verbose, "invalid sample_rate\n");
+                return preloadError("invalid sample_rate");
             }
             const format = switch (bits_per_sample) {
                 8 => Format.U8,
                 16 => Format.S16LSB,
                 24 => Format.S24LSB,
                 32 => Format.S32LSB,
-                else => return preloadError(verbose, "invalid number of bits per sample\n"),
+                else => return preloadError("invalid number of bits per sample"),
             };
             const bytes_per_sample = format.getNumBytes();
             if (byte_rate != sample_rate * num_channels * bytes_per_sample) {
-                return preloadError(verbose, "invalid byte_rate\n");
+                return preloadError("invalid byte_rate");
             }
             if (block_align != num_channels * bytes_per_sample) {
-                return preloadError(verbose, "invalid block_align\n");
+                return preloadError("invalid block_align");
             }
 
             // read "data" sub-chunk header
             const subchunk2_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, subchunk2_id, "data")) {
-                return preloadError(verbose, "missing \"data\" header\n");
+                return preloadError("missing \"data\" header");
             }
             const subchunk2_size = try stream.readIntLittle(u32);
             if ((subchunk2_size % (num_channels * bytes_per_sample)) != 0) {
-                return preloadError(verbose, "invalid subchunk2_size\n");
+                return preloadError("invalid subchunk2_size");
             }
             const num_samples = subchunk2_size / (num_channels * bytes_per_sample);
 

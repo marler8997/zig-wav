@@ -118,7 +118,7 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
         pub fn load(stream: *std.io.InStream(ReadError), preloaded: PreloadedInfo, out_buffer: []u8) !void {
             const num_bytes = preloaded.getNumBytes();
             std.debug.assert(out_buffer.len >= num_bytes);
-            try stream.readNoEof(out_buffer[num_bytes]);
+            try stream.readNoEof(out_buffer[0..num_bytes]);
         }
     };
 }

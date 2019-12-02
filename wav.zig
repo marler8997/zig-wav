@@ -47,18 +47,18 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
         pub fn preload(stream: *std.io.InStream(ReadError)) !PreloadedInfo {
             // read RIFF chunk descriptor (12 bytes)
             const chunk_id = try readIdentifier(stream);
-            if (!std.mem.eql(u8, chunk_id, "RIFF")) {
+            if (!std.mem.eql(u8, &chunk_id, "RIFF")) {
                 return preloadError("missing \"RIFF\" header");
             }
             try stream.skipBytes(4); // ignore chunk_size
             const format_id = try readIdentifier(stream);
-            if (!std.mem.eql(u8, format_id, "WAVE")) {
+            if (!std.mem.eql(u8, &format_id, "WAVE")) {
                 return preloadError("missing \"WAVE\" identifier");
             }
 
             // read "fmt" sub-chunk
             const subchunk1_id = try readIdentifier(stream);
-            if (!std.mem.eql(u8, subchunk1_id, "fmt ")) {
+            if (!std.mem.eql(u8, &subchunk1_id, "fmt ")) {
                 return preloadError("missing \"fmt \" header");
             }
             const subchunk1_size = try stream.readIntLittle(u32);
@@ -98,7 +98,7 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
 
             // read "data" sub-chunk header
             const subchunk2_id = try readIdentifier(stream);
-            if (!std.mem.eql(u8, subchunk2_id, "data")) {
+            if (!std.mem.eql(u8, &subchunk2_id, "data")) {
                 return preloadError("missing \"data\" header");
             }
             const subchunk2_size = try stream.readIntLittle(u32);
@@ -199,7 +199,7 @@ test "basic coverage (saving)" {
         .num_channels = 1,
         .sample_rate = 44100,
         .format = .S16LSB,
-        .data = [_]u8{0, 0, 0, 0, 0, 0, 0, 0},
+        .data = &[_]u8{0, 0, 0, 0, 0, 0, 0, 0},
     });
 
     std.testing.expectEqualSlices(u8, "RIFF", buffer[0..4]);

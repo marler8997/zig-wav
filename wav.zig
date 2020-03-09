@@ -1,17 +1,17 @@
 const std = @import("std");
 
 pub const Format = enum {
-    U8,
-    S16LSB,
-    S24LSB,
-    S32LSB,
+    unsigned8,
+    signed16_lsb,
+    signed24_lsb,
+    signed32_lsb,
 
     pub fn getNumBytes(self: Format) u16 {
         return switch (self) {
-            .U8 => @as(u16, 1),
-            .S16LSB => @as(u16, 2),
-            .S24LSB => @as(u16, 3),
-            .S32LSB => @as(u16, 4),
+            .unsigned8 => 1,
+            .signed16_lsb => 2,
+            .signed24_lsb => 3,
+            .signed32_lsb => 4,
         };
     }
 };
@@ -23,7 +23,8 @@ pub const PreloadedInfo = struct {
     num_samples: usize,
 
     pub fn getNumBytes(self: PreloadedInfo) usize {
-        return self.num_samples * self.num_channels * self.format.getNumBytes();
+        return self.num_samples * self.num_channels *
+            self.format.getNumBytes();
     }
 };
 
@@ -81,12 +82,13 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
             if (sample_rate < 1 or sample_rate > 192000) {
                 return preloadError("invalid sample_rate");
             }
-            const format = switch (bits_per_sample) {
-                8 => Format.U8,
-                16 => Format.S16LSB,
-                24 => Format.S24LSB,
-                32 => Format.S32LSB,
-                else => return preloadError("invalid number of bits per sample"),
+            const format: Format = switch (bits_per_sample) {
+                8 => .unsigned8,
+                16 => .signed16_lsb,
+                24 => .signed24_lsb,
+                32 => .signed32_lsb,
+                else =>
+                    return preloadError("invalid number of bits per sample"),
             };
             const bytes_per_sample = format.getNumBytes();
             if (byte_rate != sample_rate * num_channels * bytes_per_sample) {
@@ -105,7 +107,8 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
             if ((subchunk2_size % (num_channels * bytes_per_sample)) != 0) {
                 return preloadError("invalid subchunk2_size");
             }
-            const num_samples = subchunk2_size / (num_channels * bytes_per_sample);
+            const num_samples =
+                subchunk2_size / (num_channels * bytes_per_sample);
 
             return PreloadedInfo {
                 .num_channels = num_channels,
@@ -115,7 +118,11 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
             };
         }
 
-        pub fn load(stream: *std.io.InStream(ReadError), preloaded: PreloadedInfo, out_buffer: []u8) !void {
+        pub fn load(
+            stream: *std.io.InStream(ReadError),
+            preloaded: PreloadedInfo,
+            out_buffer: []u8,
+        ) !void {
             const num_bytes = preloaded.getNumBytes();
             std.debug.assert(out_buffer.len >= num_bytes);
             try stream.readNoEof(out_buffer[0..num_bytes]);
@@ -132,7 +139,10 @@ pub const SaveInfo = struct {
 
 pub fn Saver(comptime WriteError: type) type {
     return struct {
-        pub fn save(stream: *std.io.OutStream(WriteError), info: SaveInfo) !void {
+        pub fn save(
+            stream: *std.io.OutStream(WriteError),
+            info: SaveInfo,
+        ) !void {
             const data_len = @intCast(u32, info.data.len);
             const bytes_per_sample = info.format.getNumBytes();
 
@@ -151,8 +161,11 @@ pub fn Saver(comptime WriteError: type) type {
             try stream.writeIntLittle(u16, 1); // uncompressed
             try stream.writeIntLittle(u16, @intCast(u16, info.num_channels));
             try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate));
-            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate * info.num_channels) * bytes_per_sample);
-            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels) * bytes_per_sample);
+            try stream.writeIntLittle(u32,
+                @intCast(u32, info.sample_rate * info.num_channels) *
+                bytes_per_sample);
+            try stream.writeIntLittle(u16,
+                @intCast(u16, info.num_channels) * bytes_per_sample);
             try stream.writeIntLittle(u16, bytes_per_sample * 8);
 
             try stream.write("data");
@@ -184,7 +197,7 @@ test "basic coverage (loading)" {
 
     std.testing.expectEqual(@as(usize, 1), preloaded.num_channels);
     std.testing.expectEqual(@as(usize, 44100), preloaded.sample_rate);
-    std.testing.expectEqual(Format.S16LSB, preloaded.format);
+    std.testing.expectEqual(@as(Format, .signed16_lsb), preloaded.format);
     std.testing.expectEqual(@as(usize, 44), preloaded.num_samples);
 
     var buffer: [88]u8 = undefined;
@@ -195,10 +208,10 @@ test "basic coverage (saving)" {
     var buffer: [1000]u8 = undefined;
     var sos = std.io.SliceOutStream.init(buffer[0..]);
     const MySaver = Saver(std.io.SliceOutStream.Error);
-    try MySaver.save(&sos.stream, SaveInfo {
+    try MySaver.save(&sos.stream, .{
         .num_channels = 1,
         .sample_rate = 44100,
-        .format = .S16LSB,
+        .format = .signed16_lsb,
         .data = &[_]u8{0, 0, 0, 0, 0, 0, 0, 0},
     });
 

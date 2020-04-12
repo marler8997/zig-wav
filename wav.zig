@@ -30,11 +30,11 @@ pub const PreloadedInfo = struct {
 
 // verbose is comptime so we can avoid using std.debug.warn which doesn't
 // exist on some targets (e.g. wasm)
-pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
+pub fn Loader(comptime InStream: type, comptime verbose: bool) type {
     return struct {
-        fn readIdentifier(stream: *std.io.InStream(ReadError)) ![4]u8 {
+        fn readIdentifier(stream: *InStream) ![4]u8 {
             var quad: [4]u8 = undefined;
-            try stream.readNoEof(quad[0..]);
+            try stream.readNoEof(&quad);
             return quad;
         }
 
@@ -45,7 +45,7 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
             return error.WavLoadFailed;
         }
 
-        pub fn preload(stream: *std.io.InStream(ReadError)) !PreloadedInfo {
+        pub fn preload(stream: *InStream) !PreloadedInfo {
             // read RIFF chunk descriptor (12 bytes)
             const chunk_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, &chunk_id, "RIFF")) {
@@ -119,7 +119,7 @@ pub fn Loader(comptime ReadError: type, comptime verbose: bool) type {
         }
 
         pub fn load(
-            stream: *std.io.InStream(ReadError),
+            stream: *InStream,
             preloaded: PreloadedInfo,
             out_buffer: []u8,
         ) !void {
@@ -137,12 +137,9 @@ pub const SaveInfo = struct {
     data: []const u8,
 };
 
-pub fn Saver(comptime WriteError: type) type {
+pub fn Saver(comptime OutStream: type) type {
     return struct {
-        pub fn save(
-            stream: *std.io.OutStream(WriteError),
-            info: SaveInfo,
-        ) !void {
+        pub fn save(stream: *OutStream, info: SaveInfo) !void {
             const data_len = @intCast(u32, info.data.len);
             const bytes_per_sample = info.format.getNumBytes();
 
@@ -152,11 +149,11 @@ pub fn Saver(comptime WriteError: type) type {
             // length of file
             const file_length = data_chunk_pos + 8 + data_len;
 
-            try stream.write("RIFF");
+            try stream.writeAll("RIFF");
             try stream.writeIntLittle(u32, file_length - 8);
-            try stream.write("WAVE");
+            try stream.writeAll("WAVE");
 
-            try stream.write("fmt ");
+            try stream.writeAll("fmt ");
             try stream.writeIntLittle(u32, 16); // PCM
             try stream.writeIntLittle(u16, 1); // uncompressed
             try stream.writeIntLittle(u16, @intCast(u16, info.num_channels));
@@ -168,9 +165,9 @@ pub fn Saver(comptime WriteError: type) type {
                 @intCast(u16, info.num_channels) * bytes_per_sample);
             try stream.writeIntLittle(u16, bytes_per_sample * 8);
 
-            try stream.write("data");
+            try stream.writeAll("data");
             try stream.writeIntLittle(u32, data_len);
-            try stream.write(info.data);
+            try stream.writeAll(info.data);
         }
     };
 }
@@ -191,9 +188,9 @@ test "basic coverage (loading)" {
         0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0xFC, 0xFF, 0x03, 0x00,
     };
 
-    var sis = std.io.SliceInStream.init(null_wav[0..]);
-    const MyLoader = Loader(std.io.SliceInStream.Error, true);
-    const preloaded = try MyLoader.preload(&sis.stream);
+    var stream = std.io.fixedBufferStream(&null_wav).inStream();
+    const MyLoader = Loader(@TypeOf(stream), true);
+    const preloaded = try MyLoader.preload(&stream);
 
     std.testing.expectEqual(@as(usize, 1), preloaded.num_channels);
     std.testing.expectEqual(@as(usize, 44100), preloaded.sample_rate);
@@ -201,14 +198,14 @@ test "basic coverage (loading)" {
     std.testing.expectEqual(@as(usize, 44), preloaded.num_samples);
 
     var buffer: [88]u8 = undefined;
-    try MyLoader.load(&sis.stream, preloaded, buffer[0..]);
+    try MyLoader.load(&stream, preloaded, &buffer);
 }
 
 test "basic coverage (saving)" {
     var buffer: [1000]u8 = undefined;
-    var sos = std.io.SliceOutStream.init(buffer[0..]);
-    const MySaver = Saver(std.io.SliceOutStream.Error);
-    try MySaver.save(&sos.stream, .{
+    var stream = std.io.fixedBufferStream(&buffer).outStream();
+    const MySaver = Saver(@TypeOf(stream));
+    try MySaver.save(&stream, .{
         .num_channels = 1,
         .sample_rate = 44100,
         .format = .signed16_lsb,

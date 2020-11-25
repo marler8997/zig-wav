@@ -51,7 +51,7 @@ pub fn Loader(comptime InStream: type, comptime verbose: bool) type {
             if (!std.mem.eql(u8, &chunk_id, "RIFF")) {
                 return preloadError("missing \"RIFF\" header");
             }
-            try stream.skipBytes(4); // ignore chunk_size
+            try stream.skipBytes(4, .{}); // ignore chunk_size
             const format_id = try readIdentifier(stream);
             if (!std.mem.eql(u8, &format_id, "WAVE")) {
                 return preloadError("missing \"WAVE\" identifier");
@@ -87,8 +87,7 @@ pub fn Loader(comptime InStream: type, comptime verbose: bool) type {
                 16 => .signed16_lsb,
                 24 => .signed24_lsb,
                 32 => .signed32_lsb,
-                else =>
-                    return preloadError("invalid number of bits per sample"),
+                else => return preloadError("invalid number of bits per sample"),
             };
             const bytes_per_sample = format.getNumBytes();
             if (byte_rate != sample_rate * num_channels * bytes_per_sample) {
@@ -107,10 +106,9 @@ pub fn Loader(comptime InStream: type, comptime verbose: bool) type {
             if ((subchunk2_size % (num_channels * bytes_per_sample)) != 0) {
                 return preloadError("invalid subchunk2_size");
             }
-            const num_samples =
-                subchunk2_size / (num_channels * bytes_per_sample);
+            const num_samples = subchunk2_size / (num_channels * bytes_per_sample);
 
-            return PreloadedInfo {
+            return PreloadedInfo{
                 .num_channels = num_channels,
                 .sample_rate = sample_rate,
                 .format = format,
@@ -158,11 +156,9 @@ pub fn Saver(comptime OutStream: type) type {
             try stream.writeIntLittle(u16, 1); // uncompressed
             try stream.writeIntLittle(u16, @intCast(u16, info.num_channels));
             try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate));
-            try stream.writeIntLittle(u32,
-                @intCast(u32, info.sample_rate * info.num_channels) *
+            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate * info.num_channels) *
                 bytes_per_sample);
-            try stream.writeIntLittle(u16,
-                @intCast(u16, info.num_channels) * bytes_per_sample);
+            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels) * bytes_per_sample);
             try stream.writeIntLittle(u16, bytes_per_sample * 8);
 
             try stream.writeAll("data");
@@ -173,7 +169,7 @@ pub fn Saver(comptime OutStream: type) type {
 }
 
 test "basic coverage (loading)" {
-    const null_wav = [_]u8 {
+    const null_wav = [_]u8{
         0x52, 0x49, 0x46, 0x46, 0x7C, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56,
         0x45, 0x66, 0x6D, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00,
         0x01, 0x00, 0x44, 0xAC, 0x00, 0x00, 0x88, 0x58, 0x01, 0x00, 0x02,
@@ -209,7 +205,7 @@ test "basic coverage (saving)" {
         .num_channels = 1,
         .sample_rate = 44100,
         .format = .signed16_lsb,
-        .data = &[_]u8{0, 0, 0, 0, 0, 0, 0, 0},
+        .data = &[_]u8{ 0, 0, 0, 0, 0, 0, 0, 0 },
     });
 
     std.testing.expectEqualSlices(u8, "RIFF", buffer[0..4]);
